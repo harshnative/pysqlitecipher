@@ -1,7 +1,10 @@
+from os import read
 import sqlite3
+from sqlite3.dbapi2 import paramstyle
 from cryptography.fernet import Fernet
 import hashlib
 import onetimepad
+import json
 
 # main class containing all the main methods
 class SqliteCipher:
@@ -97,7 +100,7 @@ class SqliteCipher:
             raise ValueError("Table name cannot be None in checkTable method")
         else:
             try:
-                tableName = str(tableName)
+                tableName = str(tableName).strip()
             except ValueError:
                 raise ValueError("Table name passed in check table function cannot be converted to string")
 
@@ -132,7 +135,7 @@ class SqliteCipher:
             raise ValueError("Table name cannot be None in checkTable method")
         else:
             try:
-                tableName = str(tableName)
+                tableName = str(tableName).strip()
             except ValueError:
                 raise ValueError("Table name passed in check table function cannot be converted to string")
 
@@ -165,6 +168,17 @@ class SqliteCipher:
         decodedText = self.cipherSuite.decrypt(stringToPass)
         return decodedText.decode("utf-8")
 
+    # function to encrypt the passed string
+    def encryptorBinary(self , bytesData):
+        encodedText = self.cipherSuite.encrypt(bytesData)
+        return encodedText
+
+    
+    # function to decrypt the passed string
+    def decryptorBinary(self , bytesData):
+        decodedText = self.cipherSuite.decrypt(bytesData)
+        return decodedText
+
 
 
     # function to create a table
@@ -185,6 +199,7 @@ class SqliteCipher:
         INT - I
         JSON - J
         LIST - L
+        BLOB - B
 
         example  = [
             ["rollno" , "INT"],
@@ -200,7 +215,7 @@ class SqliteCipher:
             raise ValueError("Table name cannot be None in createTable method")
         else:
             try:
-                tableName = str(tableName)
+                tableName = str(tableName).strip()
             except ValueError:
                 raise ValueError("Table name passed in createTable function cannot be converted to string")
 
@@ -234,10 +249,6 @@ class SqliteCipher:
 
             colname = i[0]
 
-            if(makeSecure):
-                colname = self.encryptor(colname)
-
-
             # add data type tages to the col names
             if(i[1] == "INT"):
                 colname = colname + "_I"
@@ -251,15 +262,26 @@ class SqliteCipher:
             elif(i[1] == "LIST"):
                 colname = colname + "_L"
 
+            elif(i[1] == "BLOB"):
+                colname = colname + "_B"
+
             # TEXT will be default data type
             else:
                 colname = colname + "_T"
 
+            if(makeSecure):
+                colname = self.encryptor(colname)
+
+
             # converting colname to 'colname'
             colname = "'" + colname + "'"
 
-            # only TEXT data type is allowed as encryptor only returns string type
-            stringToExecute = stringToExecute + colname + " TEXT"
+            if(i[1] == "BLOB"):
+                stringToExecute = stringToExecute + colname + " BLOB"
+
+            else:
+                # only TEXT data type is allowed as encryptor only returns string type
+                stringToExecute = stringToExecute + colname + " TEXT"
         
             stringToExecute = stringToExecute + " , "
 
@@ -273,11 +295,296 @@ class SqliteCipher:
             self.sqlObj.commit()
 
     
-    # def insertIntoTable()
+
+    # function to check if a table is meant to be secured and return Encrypted name if so
+    # if raiseError = True then error will be raised when table is not found
+    def checkIfTableIsSecured(self , tableName , raiseError = True):
+
+        """
+        This function will return
+        a) tableName in encrypted if secure is enabled
+        b) secure tag 1 or 0
+        c) None , None if the table does not exist
+        """
+
+        # table name should be only str type
+        if(tableName == None):
+            raise ValueError("Table name cannot be None in createTable method")
+        else:
+            try:
+                tableName = str(tableName).strip()
+            except ValueError:
+                raise ValueError("Table name passed in createTable function cannot be converted to string")
+
+
+        # getting all tablenames in data base
+        result = self.sqlObj.execute("SELECT * FROM tableNames")
+
+        for i in result:
+            if(i[1] == 1):
+                if(tableName == self.decryptor(i[0])):
+                    return tableName , i[0] , True
+            if(i[1] == 0):
+                if(tableName == i[0]):
+                    return i[0] , None , False
+
+        if(raiseError):
+            raise ValueError("{} , no such table in data base".format(tableName))
+        else:
+            return None , None , None
 
 
 
-# TODO : def to check if table is secured
+    # function to return the list of all table names paired with encrypted tableName for table which have secure tag = 1 and None for secure tag = 0
+    def getAllTableNames(self):
+
+        # getting all tablenames in data base
+        result = self.sqlObj.execute("SELECT * FROM tableNames")
+
+        resultList = []
+
+
+        # adding data to result list
+        for i in result:
+            if(i[1] == 1):
+
+                # decrypting tableNames if they are decrypted
+                resultList.append([self.decryptor(i[0]) , i[0]])
+            if(i[1] == 0):
+                resultList.append([i[0] , None])
+
+        return resultList
+
+
+    # function to get the list of col names in a table
+    def getColNames(self , tableName):
+        tableName , encTableName , secured = self.checkIfTableIsSecured(tableName)
+
+        if(secured):
+            result = self.sqlObj.execute("SELECT * FROM '{}'".format(encTableName))
+
+            # decrypting col names if they are encrypted and removing data type tag along with it
+            colList = [[self.decryptor(description[0])[:-2] , description[0]] for description in result.description]
+        else:
+            result = self.sqlObj.execute("SELECT * FROM '{}'".format(tableName))
+
+            colList = [[description[0][:-2] , None] for description in result.description]
+
+        return colList
+
+
+    # function to get the list of col names along with their data type
+    def describeTable(self , tableName):
+
+        tableName , encTableName , secured  = self.checkIfTableIsSecured(tableName)
+
+        if(secured):
+            result = self.sqlObj.execute("SELECT * FROM '{}'".format(encTableName))
+
+            # decrypting col names if they are encrypted and removing data type tag along with it
+            colList = [[self.decryptor(description[0]) , description[0]] for description in result.description]
+        else:
+            result = self.sqlObj.execute("SELECT * FROM '{}'".format(tableName))
+
+            colList = [[description[0] , description[0]] for description in result.description]
+
+        finalColList = []
+
+        # identifying data type from tag
+        for i in colList:
+            if(i[0][-1] == "I"):
+                finalColList.append([i[0][:-2] , "INT" , i[1]])
+            elif(i[0][-1] == "R"):
+                finalColList.append([i[0][:-2] , "REAL" , i[1]])
+            elif(i[0][-1] == "L"):
+                finalColList.append([i[0][:-2] , "LIST" , i[1]])
+            elif(i[0][-1] == "J"):
+                finalColList.append([i[0][:-2] , "JSON" , i[1]])
+            elif(i[0][-1] == "B"):
+                finalColList.append([i[0][:-2] , "BLOB" , i[1]])
+            elif(i[0][-1] == "T"):
+                finalColList.append([i[0][:-2] , "TEXT" , i[1]])
+
+
+        return finalColList
+
+
+    # function to insert data into table
+    # insert should contain values of all col
+    # else None is add to that col
+    def insertIntoTable(self , tableName , insertList , commit = True):
+
+        tableName , encTableName , secured = self.checkIfTableIsSecured(tableName)
+
+        insertList = list(insertList)
+
+        # init string to exe
+        if(secured):
+            stringToExecute = "INSERT INTO '{}' ( ".format(encTableName)
+        else:
+            stringToExecute = "INSERT INTO '{}' ( ".format(tableName)
+
+        # adding columns to stringToExe
+        colList = self.describeTable(tableName)
+
+        for i in colList:
+            stringToExecute = stringToExecute + " '{}' ,".format(i[2])
+
+
+
+        stringToExecute = stringToExecute[:-1] + ") VALUES ( "
+
+        # adding None if the the insertList as less value than col list
+        if(len(colList) > len(insertList)):
+            for i in range(len(colList) - len(insertList)):
+                insertList.append("None")
+
+        BlobParameters = []
+
+
+        # adding the insertion value to string to exe 
+        for i,j in zip(insertList , colList):
+
+            # if the data is blob type then it need to be passed as a parameter list
+            if(j[1] == "BLOB"):
+                if(secured):
+                    i = self.encryptorBinary(i)
+                
+                stringToExecute = stringToExecute + "? , "
+
+                BlobParameters.append(sqlite3.Binary(i))
+
+            # convert the list and json data into json string
+            elif((j[1] == "LIST") or (j[1] == "JSON")):
+                i = json.dumps(i)
+                if(secured):
+                    i = self.encryptor(i)
+
+                stringToExecute = stringToExecute + "'" + str(i) + "' , "
+
+            # rest data is converted to string
+            else:
+                if(secured):
+                    i = self.encryptor(str(i))
+
+                stringToExecute = stringToExecute + "'" + str(i) + "' , "
+
+        
+        stringToExecute = stringToExecute[:-2] + ");"
+
+        self.sqlObj.execute(stringToExecute , BlobParameters)
+
+        if(commit):
+            self.sqlObj.commit()
+
+
+
+    # function to get the all data from table
+    # returns two variables
+    # a) col list containing names of cols
+    # b) value list containing values in form of sublist  valueList( row1(col1Data , col2Data) , row2(col1Data , col2Data) ) = [ [col1Data , col2Data] , [col1Data , col2Data] ]
+    # sometimes module can receive a unexpected data type like int in col of list data type then if raiseConversionError is True then error is raised else the exact string is returned
+    def getDataFromTable(self , tableName , raiseConversionError = True):
+        
+        def raiseConversionErrorFunction(value , to):
+            raise ValueError("{} cannot be converted to {}".format(value , to))
+
+
+        tableName , encTableName , secured = self.checkIfTableIsSecured(tableName)
+
+        tableDiscription = self.describeTable(tableName)
+
+        # generating col list
+        colList = []
+
+        for i in tableDiscription:
+            colList.append(i[0])
+
+
+        # getting data from data base
+        if(secured):
+            result = self.sqlObj.execute("SELECT * FROM '{}'".format(encTableName))
+        else:
+            result = self.sqlObj.execute("SELECT * FROM '{}'".format(tableName))
+            
+        
+        # adding data to value list and decrypting it if required
+        valueList = []
+
+        for row in result:
+
+            tempList = []
+
+            for i,j in zip(row , tableDiscription):
+
+                if(j[1] == "BLOB"):
+                    if(secured):
+                        i = self.decryptorBinary(i)
+
+                elif((j[1] == "LIST")):
+                    if(secured):
+                        i = self.decryptor(i)
+                    
+                    # trying to convert to desired data type
+                    try:
+                        i = list(json.loads(i))
+                    except TypeError:
+                        if(raiseConversionError):
+                            raiseConversionErrorFunction()
+                        else:
+                            i = str(i)
+
+                elif((j[1] == "JSON")):
+                    if(secured):
+                        i = self.decryptor(i)
+                    
+                    try:
+                        i = dict(json.loads(i))
+                    except TypeError:
+                        if(raiseConversionError):
+                            raiseConversionErrorFunction()
+                        else:
+                            i = str(i)
+
+                else:
+                    if(secured):
+                        i = self.decryptor(i)
+
+                    if(j[1] == "INT"):
+
+                        try:
+                            i = int(i)
+                        except TypeError:
+                            if(raiseConversionError):
+                                raiseConversionErrorFunction()
+                            else:
+                                i = str(i)
+
+                    elif(j[1] == "REAL"):
+
+                        try:
+                            i = float(i)
+                        except TypeError:
+                            if(raiseConversionError):
+                                raiseConversionErrorFunction()
+                            else:
+                                i = str(i)
+
+                    elif(j[1] == "TEXT"):
+                        i = str(i)
+
+                tempList.append(i)
+
+            valueList.append(tempList)
+
+        
+        return colList , valueList
+
+
+
+
+
+
 
 
 
@@ -290,10 +597,34 @@ if __name__ == "__main__":
     colList = [
             ["rollno" , "INT"],
             ["name" , "TEXT"],
+            ["binaryData" , "BLOB"],
+            ["listData" , "LIST"],
+            ["dictData" , "JSON"],
+            ["floatData" , "REAL"],
         ]
 
-    obj.createTable("testTable" , colList , makeSecure=True)
+    # obj.createTable("testTable" , colList , makeSecure=True)
 
+    # print(obj.getAllTableNames())
+    # print(obj.checkIfTableIsSecured('testTable'))
+    # for i in obj.describeTable('testTable'):
+    #     print(i)
+    # print(obj.describeTable('testTable'))
+
+    with open("README.md" , "rb") as fil:
+        dataBytes = fil.read()
+
+    obj.insertIntoTable('testTable' , [123 , "hello" , dataBytes , [4,5,6] , {"key":"value" , "hello":"boi"} , 4.123])
+    
+    colList , result = obj.getDataFromTable('testTable')
+
+    print(colList)
+
+    for i in result:
+        for j in i:
+            print(j , "    " , type(j) , end="  ,   ")
+
+        print()
 
     
 

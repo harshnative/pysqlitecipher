@@ -12,6 +12,8 @@ logo.ico
 
 releases/
 
+pysqlitecipher.db
+
 packages/apiStorage/
 
 
