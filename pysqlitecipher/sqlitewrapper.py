@@ -239,7 +239,12 @@ class SqliteCipher:
 
 
         # init string to execute in sqlite connector
-        stringToExecute = "CREATE TABLE {}".format(tableName) + " ( "
+        # by default a primary key ID is used to perform update , delete operations
+        # this ID is automatically mantained , so no need to pass it in insert list while inserting data to table
+        if(makeSecure):
+            stringToExecute = "CREATE TABLE {}".format(tableName) + " ( '{}' TEXT PRIMARY KEY NOT NULL , ".format(self.encryptor('ID_I'))
+        else:
+            stringToExecute = "CREATE TABLE {}".format(tableName) + " ( 'ID_I' TEXT PRIMARY KEY NOT NULL , "
 
 
         # traverse col list to add colname and data types to stringToExecute
@@ -431,15 +436,54 @@ class SqliteCipher:
             stringToExecute = stringToExecute + " '{}' ,".format(i[2])
 
 
+        # getting the result from table
+        if(secured):
+            result = self.sqlObj.execute("SELECT * FROM '{}'".format(encTableName))
+        else:
+            result = self.sqlObj.execute("SELECT * FROM '{}'".format(tableName))
 
-        stringToExecute = stringToExecute[:-1] + ") VALUES ( "
+        # getting the last ID value
+        lastKeyFromTable = None
+
+        for i in result:
+            lastKeyFromTable = i[0]
+
+        # if the table is secured we need to perform encryption decryption operations
+        if(secured):
+
+            # if no data in table
+            if(lastKeyFromTable == None):
+
+                # init ID as 0
+                lastKeyFromTable = self.encryptor('0')
+            else:
+
+                # else get ID , decrypt it , increament it ,  encrypt it back
+                lastKeyFromTable = self.decryptor(lastKeyFromTable)
+                lastKeyFromTable = int(lastKeyFromTable) + 1
+                lastKeyFromTable = self.encryptor(str(lastKeyFromTable))
+
+        # if table is not secured we just skip encryption and decryption
+        else:
+            if(lastKeyFromTable == None):
+                lastKeyFromTable = '0'
+            else:
+                lastKeyFromTable = int(lastKeyFromTable) + 1
+                lastKeyFromTable = str(lastKeyFromTable)
+                
+            
+        # adding the ID value to value list
+        stringToExecute = stringToExecute[:-1] + ") VALUES ( '{}' , ".format(lastKeyFromTable)
 
         # adding None if the the insertList as less value than col list
-        if(len(colList) > len(insertList)):
-            for i in range(len(colList) - len(insertList)):
+        if(((len(colList) - 1)  > len(insertList))):
+            for i in range(len(colList) - len(insertList) - 1):
                 insertList.append("None")
 
         BlobParameters = []
+
+        # ID col is already been handled
+        colList = colList[1:]
 
 
         # adding the insertion value to string to exe 
@@ -484,7 +528,7 @@ class SqliteCipher:
     # a) col list containing names of cols
     # b) value list containing values in form of sublist  valueList( row1(col1Data , col2Data) , row2(col1Data , col2Data) ) = [ [col1Data , col2Data] , [col1Data , col2Data] ]
     # sometimes module can receive a unexpected data type like int in col of list data type then if raiseConversionError is True then error is raised else the exact string is returned
-    def getDataFromTable(self , tableName , raiseConversionError = True):
+    def getDataFromTable(self , tableName , raiseConversionError = True , omitID = False):
         
         def raiseConversionErrorFunction(value , to):
             raise ValueError("{} cannot be converted to {}".format(value , to))
@@ -577,8 +621,36 @@ class SqliteCipher:
 
             valueList.append(tempList)
 
+        # if the user does not want ID col which is auto maintained and inserted to be returned
+        if(omitID):
+            colList = colList[1:]
+            
+            newValueList = []
+
+            for i in valueList:
+                newValueList.append(i[1:])
+
+            valueList = newValueList
         
         return colList , valueList
+
+
+
+    def deleteDataInTable(self , tableName , colName , colValue):
+
+        tableName , encTableName , secured = self.checkIfTableIsSecured(tableName)
+
+        tableDiscription = self.describeTable(tableName)
+
+        if(secured):
+            stringToExe = "DELETE from '{}' where ".format(encTableName)
+        else:
+            stringToExe = "DELETE from '{}' where ".format(tableName)
+
+        
+
+
+
 
 
 
@@ -603,28 +675,31 @@ if __name__ == "__main__":
             ["floatData" , "REAL"],
         ]
 
-    # obj.createTable("testTable" , colList , makeSecure=True)
+    # obj.createTable("testTable" , colList , makeSecure=False)
 
     # print(obj.getAllTableNames())
     # print(obj.checkIfTableIsSecured('testTable'))
     # for i in obj.describeTable('testTable'):
     #     print(i)
+    #     print()
     # print(obj.describeTable('testTable'))
 
-    with open("README.md" , "rb") as fil:
-        dataBytes = fil.read()
+    # with open("README.md" , "rb") as fil:
+    #     dataBytes = fil.read()
 
-    obj.insertIntoTable('testTable' , [123 , "hello" , dataBytes , [4,5,6] , {"key":"value" , "hello":"boi"} , 4.123])
+    dataBytes = b"hello world"
+
+    obj.insertIntoTable('testTable' , [123 , "hello" , dataBytes , [4,5,6] , {"key":"value"} , 4.123])
     
-    colList , result = obj.getDataFromTable('testTable')
+    colList , result = obj.getDataFromTable('testTable' , omitID=True)
 
-    print(colList)
+    # print(colList)
 
     for i in result:
         for j in i:
-            print(j , "    " , type(j) , end="  ,   ")
+            print(j , "    " , type(j))
 
-        print()
+        print("\n\n")
 
     
 
