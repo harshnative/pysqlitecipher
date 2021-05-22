@@ -697,7 +697,7 @@ class SqliteCipher:
 
     # function to delete a row based on ID value
     # if raiseError is True , a error will be raised if ID is not found , but this may result in performance impact as now function as check for ID before deletion
-    def deleteDataInTable(self , tableName , iDValue , commit = True , raiseError = True):
+    def deleteDataInTable(self , tableName , iDValue , commit = True , raiseError = True , updateId = True):
 
 
         # setting up table names
@@ -758,6 +758,138 @@ class SqliteCipher:
         # exe command
         result = self.sqlObj.execute(stringToExe)
         
+        # if update id is required
+        if(updateId):
+
+            # assume ID we total 7 IDS
+            # lets say we delete ID = 5 from table then table will still have 0 1 2 3 4 6 ID row , which is not in order
+            # we will traverse the data in table and start from 0 
+            # if at 0 ID is 0 , then fine else make it 0
+            # if at 1 ID is 1 , then fine else make it 1
+            # and so on
+            colList , result = self.getDataFromTable(tableName , omitID=False)
+
+            count = 0
+            for i in result:
+                if(i[0] != count):
+                    self.updateInTable(tableName , i[0] , 'ID' , count , False)
+
+                count = count + 1 
+
+        # commit if wanted
+        if(commit):
+            self.sqlObj.commit()
+
+
+
+
+    
+    def updateInTable(self , tableName , iDValue , colName , colValue , commit = True , raiseError = True):
+
+        # statement to make like
+        # "UPDATE COMPANY set SALARY = 25000.00 where ID = 1"
+
+        # setting up table names
+        tableName , encTableName , secured = self.checkIfTableIsSecured(tableName)
+
+        tableDiscription = self.describeTable(tableName)
+
+        # col ID name
+        iDName = tableDiscription[0][2]
+
+        # checking if the col name is present in data base
+        # if present getting its real name
+        colFound = False
+        colData = None
+        for i in tableDiscription:
+            if(i[0] == colName):
+                colFound = True
+                colData = i[1]
+                colName = i[2]
+                break
+
+        # raise error if col not found
+        if(not(colFound)):
+            raise RuntimeError("no such column - {} in table - {} while updating".format(colName , tableName))
+
+
+        # list for binary parameters
+        BlobParameters = []
+
+
+        # converting to string and encrypting if needed
+        if((colData == "LIST") or (colData == "JSON")):
+            colValue = json.dumps(colValue)
+            if(secured):
+                colValue = self.encryptor(colValue)
+
+        elif(colData == "BLOB"):
+            if(secured):
+                colValue = self.encryptorBinary(colValue)
+            
+            BlobParameters.append(sqlite3.Binary(colValue))
+
+        else:
+            colValue = str(colValue)
+            if(secured):
+                colValue = self.encryptor(colValue)
+
+
+
+
+        if(secured):
+
+            # getting data from table to find the corresponding encrypted ID
+            result = self.sqlObj.execute("SELECT * FROM '{}';".format(encTableName))
+
+            found = False
+
+            for i in result:
+                
+                # if the ID passed is same as found in data base , then pick up the encrypted version of it from data base
+                if(int(self.decryptor(i[0])) == int(iDValue)):
+                    iDValue = i[0]
+                    found = True
+                    break
+
+            # raise error if ID not found
+            if((raiseError) and (not(found))):
+                raise RuntimeError("ID = {} not found while deletion process".format(iDValue))
+
+            if(colData == "BLOB"):
+                stringToExe = """UPDATE '{}' set "{}" = ? where "{}"='{}';""".format(encTableName , colName , iDName , iDValue)
+            else:
+                stringToExe = """UPDATE '{}' set "{}" = '{}' where "{}"='{}';""".format(encTableName , colName , colValue , iDName , iDValue)
+
+        else:
+
+            # raise error if ID not found
+            if(raiseError):
+
+                # getting data from db to check if ID is present in data base
+                result = self.sqlObj.execute("SELECT * FROM '{}';".format(tableName))
+
+                found = False
+
+                for i in result:
+
+                    # if present make found = True
+                    if(int(i[0]) == int(iDValue)):
+                        found = True
+                        break
+
+                # raise error
+                if((not(found))):
+                    raise RuntimeError("ID = {} not found while deletion process".format(iDValue))
+
+            if(colData == "BLOB"):
+                stringToExe = """UPDATE '{}' set "{}" = ? where "{}"='{}';""".format(encTableName , colName , iDName , iDValue)
+            else:
+                stringToExe = """UPDATE '{}' set "{}" = '{}' where "{}"='{}';""".format(tableName , colName , colValue , iDName , iDValue)
+
+        # exe command
+        result = self.sqlObj.execute(stringToExe , BlobParameters)
+        
         # commit if wanted
         if(commit):
             self.sqlObj.commit()
@@ -795,7 +927,7 @@ if __name__ == "__main__":
             ["floatData" , "REAL"],
         ]
 
-    obj.createTable("testTable" , colList , makeSecure=True)
+    # obj.createTable("testTable" , colList , makeSecure=True)
 
     # print(obj.getAllTableNames())
     # print(obj.checkIfTableIsSecured('testTable'))
@@ -809,7 +941,7 @@ if __name__ == "__main__":
 
     dataBytes = b"hello world"
 
-    obj.insertIntoTable('testTable' , [123 , "hello" , dataBytes , [4,5,6] , {"key":"value"} , 4.123])
+    # obj.insertIntoTable('testTable' , [5 , "hello" , dataBytes , [4,5,6] , {"key":"value"} , 4.123])
     
     colList , result = obj.getDataFromTable('testTable' , omitID=False)
 
@@ -821,9 +953,25 @@ if __name__ == "__main__":
 
         print("\n\n")
 
-    # obj.deleteDataInTable('testTable' , 2)
-    # print("\nafter\n")
+    obj.deleteDataInTable('testTable' , 2)
+    print("\nafter\n")
 
+
+    colList , result = obj.getDataFromTable('testTable' , omitID=False)
+
+    for i in result:
+        for j in i:
+            print(j , "    " , type(j))
+
+        print("\n\n")
+
+    # obj.updateInTable('testTable' , 12 , 'rollno' , 123)
+    # obj.updateInTable('testTable' , 12 , 'name' , "yooyoo")
+    # obj.updateInTable('testTable' , 12 , 'binaryData' , b"boiboi")
+    # obj.updateInTable('testTable' , 12 , 'listData' , ['a' , 'b' , 'c'])
+    # obj.updateInTable('testTable' , 12 , 'dictData' , {'my' : 'code'})
+    # obj.updateInTable('testTable' , 12 , 'floatData' , 0.123)
+    # print("\nafter\n")
 
     # colList , result = obj.getDataFromTable('testTable' , omitID=False)
 
