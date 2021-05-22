@@ -10,7 +10,7 @@ import json
 class SqliteCipher:
 
     # constructor for the object
-    def __init__(self , dataBasePath="pysqlitecipher.db" , checkSameThread=False , password=None):
+    def __init__(self , dataBasePath="pysqlitecipher.db" , checkSameThread=False , password=None , increaseEncryption = False):
         
         # main sqlite3 connection object
         self.sqlObj = sqlite3.connect(dataBasePath , check_same_thread=checkSameThread)
@@ -21,6 +21,7 @@ class SqliteCipher:
 
         # storing into object
         self.password = str(password)
+        self.securityHigh = increaseEncryption
 
         # check if the tableNames table exist in data base if not exist create one and insert it into tableNames table to know that this table exist
         self.sqlObj.execute("CREATE TABLE IF NOT EXISTS tableNames (tableName TEXT , secured INT);")
@@ -32,7 +33,7 @@ class SqliteCipher:
 
         # check if the authenticationTable exist , if not create table
         if(self.checkTableExist2("authenticationTable") == False):
-            self.sqlObj.execute("CREATE TABLE authenticationTable (SHA512_pass TEXT , encryptedKey TEXT);")
+            self.sqlObj.execute("CREATE TABLE authenticationTable (SHA512_pass TEXT , encryptedKey TEXT , security INT);")
             self.sqlObj.execute("INSERT INTO tableNames (tableName , secured) VALUES ('authenticationTable' , 0);")
             self.sqlObj.commit()
             
@@ -50,7 +51,11 @@ class SqliteCipher:
             
             
             # adding sha512 password and encrypted key to data base
-            self.sqlObj.execute("INSERT INTO authenticationTable (SHA512_pass , encryptedKey) VALUES ({} , {});".format("'" + sha512Pass + "'" , "'" + encryptedKey + "'"))
+            if(self.securityHigh):
+                self.sqlObj.execute("INSERT INTO authenticationTable (SHA512_pass , encryptedKey , security) VALUES ({} , {} , 1);".format("'" + sha512Pass + "'" , "'" + encryptedKey + "'"))
+            else:
+                self.sqlObj.execute("INSERT INTO authenticationTable (SHA512_pass , encryptedKey , security) VALUES ({} , {} , 0);".format("'" + sha512Pass + "'" , "'" + encryptedKey + "'"))
+                
             self.sqlObj.commit()
         
         else:
@@ -64,13 +69,22 @@ class SqliteCipher:
             cursorFromSql = self.sqlObj.execute("SELECT * FROM authenticationTable;")
             for i in cursorFromSql:
                 sha512PassFromDB = i[0]
+                securityStatus = i[2]
 
 
             # validating and raising error if not match
             if(sha512PassFromDB != sha512Pass):
                 raise RuntimeError("password does not match to password used to create data base")
 
-        
+
+            if(self.securityHigh):
+                if(securityStatus == 0):
+                    raise RuntimeError("This data base was created with security level low , you cannot change it now , start with securityHigh = False")
+            else:
+                if(securityStatus == 1):
+                    raise RuntimeError("This data base was created with security level high , you cannot change it now , start with securityHigh = True")
+
+
         # getting the encrypted key from db
         cursorFromSql = self.sqlObj.execute("SELECT * FROM authenticationTable;")
         for i in cursorFromSql:
@@ -78,6 +92,7 @@ class SqliteCipher:
 
         # generating key to decrypt key
         sha256Pass = hashlib.sha512(self.password.encode()).hexdigest()
+        self.sha256Pass = sha256Pass
 
         # decrypting key
         decryptedKey = onetimepad.decrypt(encryptedKey , sha256Pass)
@@ -157,16 +172,59 @@ class SqliteCipher:
 
     # function to encrypt the passed string
     def encryptor(self , string):
-        stringToPass = bytes(string , "utf-8")
-        encodedText = self.cipherSuite.encrypt(stringToPass)
-        return encodedText.decode("utf-8")
+
+        if(self.securityHigh):
+            stringToReturn = ""
+
+            # key
+            key = Fernet.generate_key()
+            
+            # conv key from bytes to str 
+            newKey = key.decode("utf-8")
+
+            # encryting the key using the conv pass and keysalts
+            keyToAdd = onetimepad.encrypt(newKey , self.sha256Pass)
+
+            # conv string to bytes
+            stringToPass = bytes(string , "utf-8")
+
+            cipher_suite = Fernet(key)
+            encoded_text = cipher_suite.encrypt(stringToPass)
+            stringToAdd = encoded_text.decode("utf-8")
+
+            stringToReturn = keyToAdd + stringToAdd
+
+            return stringToReturn
+
+        else:
+
+            stringToPass = bytes(string , "utf-8")
+            encodedText = self.cipherSuite.encrypt(stringToPass)
+            return encodedText.decode("utf-8")
+
+        
 
     
     # function to decrypt the passed string
     def decryptor(self , string):
-        stringToPass = bytes(string , "utf-8")
-        decodedText = self.cipherSuite.decrypt(stringToPass)
-        return decodedText.decode("utf-8")
+
+        if(self.securityHigh):
+            # getting the key
+            newKey = onetimepad.decrypt(string[:88] , self.sha256Pass)
+
+            # conv strings to bytes
+            key = bytes(newKey , "utf-8")
+
+            cipher_suite = Fernet(key)
+            decoded_text = cipher_suite.decrypt(bytes(string[88:] , "utf-8"))
+
+            return decoded_text.decode("utf-8")
+
+        else:
+            stringToPass = bytes(string , "utf-8")
+            decodedText = self.cipherSuite.decrypt(stringToPass)
+            return decodedText.decode("utf-8")
+
 
     # function to encrypt the passed string
     def encryptorBinary(self , bytesData):
@@ -282,6 +340,7 @@ class SqliteCipher:
             colname = "'" + colname + "'"
 
             if(i[1] == "BLOB"):
+                # BLOB data type
                 stringToExecute = stringToExecute + colname + " BLOB"
 
             else:
@@ -725,7 +784,7 @@ class SqliteCipher:
 
 
 if __name__ == "__main__":
-    obj = SqliteCipher(password="helloboi")
+    obj = SqliteCipher(password="helloboihelloboi" , increaseEncryption=True)
 
     colList = [
             ["rollno" , "INT"],
@@ -736,7 +795,7 @@ if __name__ == "__main__":
             ["floatData" , "REAL"],
         ]
 
-    # obj.createTable("testTable" , colList , makeSecure=False)
+    obj.createTable("testTable" , colList , makeSecure=True)
 
     # print(obj.getAllTableNames())
     # print(obj.checkIfTableIsSecured('testTable'))
@@ -762,17 +821,17 @@ if __name__ == "__main__":
 
         print("\n\n")
 
-    obj.deleteDataInTable('testTable' , 2)
-    print("\nafter\n")
+    # obj.deleteDataInTable('testTable' , 2)
+    # print("\nafter\n")
 
 
-    colList , result = obj.getDataFromTable('testTable' , omitID=False)
+    # colList , result = obj.getDataFromTable('testTable' , omitID=False)
 
-    for i in result:
-        for j in i:
-            print(j , "    " , type(j))
+    # for i in result:
+    #     for j in i:
+    #         print(j , "    " , type(j))
 
-        print("\n\n")
+    #     print("\n\n")
 
 
     
