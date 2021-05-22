@@ -849,7 +849,35 @@ class SqliteCipher:
         if(commit):
             self.sqlObj.commit()
 
+    
 
+    # function to change the password in data base
+    # we need to encrypt the key using new password and change it in data base
+    # we need to change the SHA512 value in data base
+    def changePassword(self , newPass):
+        newPass = str(newPass)
+
+        # converting password to SHA512
+        oldSha512Pass = hashlib.sha512(self.password.encode()).hexdigest()
+        new_sha512Pass = hashlib.sha512(newPass.encode()).hexdigest()
+        
+        # converting password to SHA256
+        new_sha256Pass = hashlib.sha512(newPass.encode()).hexdigest()
+
+        key = self.stringKey
+
+        # key encrypted using new password
+        encryptedKey = onetimepad.encrypt(key , new_sha256Pass)
+
+        # change the key 
+        stringToExe = """UPDATE authenticationTable set encryptedKey = '{}' where SHA512_pass = '{}'""".format(encryptedKey , oldSha512Pass)
+        self.sqlObj.execute(stringToExe)
+        self.sqlObj.commit()
+
+        # change the sha512 value
+        stringToExe = """UPDATE authenticationTable set SHA512_pass = '{}' where SHA512_pass = '{}'""".format(new_sha512Pass , oldSha512Pass)
+        self.sqlObj.execute(stringToExe)
+        self.sqlObj.commit()
         
 
         
@@ -871,7 +899,7 @@ class SqliteCipher:
 
 
 if __name__ == "__main__":
-    obj = SqliteCipher(password="helloboihelloboi")
+    obj = SqliteCipher(password="helloboi")
 
     colList = [
             ["rollno" , "INT"],
@@ -908,17 +936,17 @@ if __name__ == "__main__":
 
         print("\n\n")
 
-    obj.deleteDataInTable('testTable' , 0)
-    print("\nafter\n")
+    # obj.deleteDataInTable('testTable' , 0)
+    # print("\nafter\n")
 
 
-    colList , result = obj.getDataFromTable('testTable' , omitID=False)
+    # colList , result = obj.getDataFromTable('testTable' , omitID=False)
 
-    for i in result:
-        for j in i:
-            print(j , "    " , type(j))
+    # for i in result:
+    #     for j in i:
+    #         print(j , "    " , type(j))
 
-        print("\n\n")
+    #     print("\n\n")
 
     # obj.updateInTable('testTable' , 12 , 'rollno' , 123)
     # obj.updateInTable('testTable' , 12 , 'name' , "yooyoo")
@@ -936,6 +964,7 @@ if __name__ == "__main__":
 
     #     print("\n\n")
 
+    obj.changePassword("helloboi")
 
     
 
