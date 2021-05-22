@@ -760,27 +760,35 @@ class SqliteCipher:
         
         # if update id is required
         if(updateId):
-
-            # assume ID we total 7 IDS
-            # lets say we delete ID = 5 from table then table will still have 0 1 2 3 4 6 ID row , which is not in order
-            # we will traverse the data in table and start from 0 
-            # if at 0 ID is 0 , then fine else make it 0
-            # if at 1 ID is 1 , then fine else make it 1
-            # and so on
-            colList , result = self.getDataFromTable(tableName , omitID=False)
-
-            count = 0
-            for i in result:
-                if(i[0] != count):
-                    self.updateInTable(tableName , i[0] , 'ID' , count , False)
-
-                count = count + 1 
+            self.updateIDs(tableName , False)
+            
 
         # commit if wanted
         if(commit):
             self.sqlObj.commit()
 
 
+
+    def updateIDs(self , tableName , commit = True):
+        
+        # assume ID we total 7 IDS
+        # lets say we delete ID = 5 from table then table will still have 0 1 2 3 4 6 ID row , which is not in order
+        # we will traverse the data in table and start from 0 
+        # if at 0 ID is 0 , then fine else make it 0
+        # if at 1 ID is 1 , then fine else make it 1
+        # and so on
+        colList , result = self.getDataFromTable(tableName , omitID=False)
+
+        count = 0
+        for i in result:
+            if(i[0] != count):
+                self.updateInTable(tableName , i[0] , 'ID' , count , False)
+
+            count = count + 1 
+
+        # commit if wanted
+        if(commit):
+            self.sqlObj.commit()
 
 
     
@@ -953,7 +961,7 @@ if __name__ == "__main__":
 
         print("\n\n")
 
-    obj.deleteDataInTable('testTable' , 2)
+    obj.deleteDataInTable('testTable' , 1)
     print("\nafter\n")
 
 
