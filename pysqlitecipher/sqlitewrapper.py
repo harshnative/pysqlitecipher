@@ -50,7 +50,7 @@ class SqliteCipher:
             
             
             # adding sha512 password and encrypted key to data base
-            self.sqlObj.execute("INSERT INTO authenticationTable (SHA512_pass , encryptedKey) VALUES ({} , {})".format("'" + sha512Pass + "'" , "'" + encryptedKey + "'"))
+            self.sqlObj.execute("INSERT INTO authenticationTable (SHA512_pass , encryptedKey) VALUES ({} , {});".format("'" + sha512Pass + "'" , "'" + encryptedKey + "'"))
             self.sqlObj.commit()
         
         else:
@@ -61,7 +61,7 @@ class SqliteCipher:
             sha512Pass = hashlib.sha512(self.password.encode()).hexdigest()
         
             # getting the password from data base
-            cursorFromSql = self.sqlObj.execute("SELECT * FROM authenticationTable")
+            cursorFromSql = self.sqlObj.execute("SELECT * FROM authenticationTable;")
             for i in cursorFromSql:
                 sha512PassFromDB = i[0]
 
@@ -72,7 +72,7 @@ class SqliteCipher:
 
         
         # getting the encrypted key from db
-        cursorFromSql = self.sqlObj.execute("SELECT * FROM authenticationTable")
+        cursorFromSql = self.sqlObj.execute("SELECT * FROM authenticationTable;")
         for i in cursorFromSql:
             encryptedKey = i[1]
 
@@ -105,7 +105,7 @@ class SqliteCipher:
                 raise ValueError("Table name passed in check table function cannot be converted to string")
 
         # getting all tablenames in data base
-        result = self.sqlObj.execute("SELECT * FROM tableNames")
+        result = self.sqlObj.execute("SELECT * FROM tableNames;")
 
         exist = False
 
@@ -140,7 +140,7 @@ class SqliteCipher:
                 raise ValueError("Table name passed in check table function cannot be converted to string")
 
         # getting all tablenames in data base
-        result = self.sqlObj.execute("SELECT * FROM tableNames")
+        result = self.sqlObj.execute("SELECT * FROM tableNames;")
 
         exist = False
 
@@ -323,7 +323,7 @@ class SqliteCipher:
 
 
         # getting all tablenames in data base
-        result = self.sqlObj.execute("SELECT * FROM tableNames")
+        result = self.sqlObj.execute("SELECT * FROM tableNames;")
 
         for i in result:
             if(i[1] == 1):
@@ -344,7 +344,7 @@ class SqliteCipher:
     def getAllTableNames(self):
 
         # getting all tablenames in data base
-        result = self.sqlObj.execute("SELECT * FROM tableNames")
+        result = self.sqlObj.execute("SELECT * FROM tableNames;")
 
         resultList = []
 
@@ -366,12 +366,12 @@ class SqliteCipher:
         tableName , encTableName , secured = self.checkIfTableIsSecured(tableName)
 
         if(secured):
-            result = self.sqlObj.execute("SELECT * FROM '{}'".format(encTableName))
+            result = self.sqlObj.execute("SELECT * FROM '{}';".format(encTableName))
 
             # decrypting col names if they are encrypted and removing data type tag along with it
             colList = [[self.decryptor(description[0])[:-2] , description[0]] for description in result.description]
         else:
-            result = self.sqlObj.execute("SELECT * FROM '{}'".format(tableName))
+            result = self.sqlObj.execute("SELECT * FROM '{}';".format(tableName))
 
             colList = [[description[0][:-2] , None] for description in result.description]
 
@@ -384,12 +384,12 @@ class SqliteCipher:
         tableName , encTableName , secured  = self.checkIfTableIsSecured(tableName)
 
         if(secured):
-            result = self.sqlObj.execute("SELECT * FROM '{}'".format(encTableName))
+            result = self.sqlObj.execute("SELECT * FROM '{}';".format(encTableName))
 
             # decrypting col names if they are encrypted and removing data type tag along with it
             colList = [[self.decryptor(description[0]) , description[0]] for description in result.description]
         else:
-            result = self.sqlObj.execute("SELECT * FROM '{}'".format(tableName))
+            result = self.sqlObj.execute("SELECT * FROM '{}';".format(tableName))
 
             colList = [[description[0] , description[0]] for description in result.description]
 
@@ -438,9 +438,9 @@ class SqliteCipher:
 
         # getting the result from table
         if(secured):
-            result = self.sqlObj.execute("SELECT * FROM '{}'".format(encTableName))
+            result = self.sqlObj.execute("SELECT * FROM '{}';".format(encTableName))
         else:
-            result = self.sqlObj.execute("SELECT * FROM '{}'".format(tableName))
+            result = self.sqlObj.execute("SELECT * FROM '{}';".format(tableName))
 
         # getting the last ID value
         lastKeyFromTable = None
@@ -547,9 +547,9 @@ class SqliteCipher:
 
         # getting data from data base
         if(secured):
-            result = self.sqlObj.execute("SELECT * FROM '{}'".format(encTableName))
+            result = self.sqlObj.execute("SELECT * FROM '{}';".format(encTableName))
         else:
-            result = self.sqlObj.execute("SELECT * FROM '{}'".format(tableName))
+            result = self.sqlObj.execute("SELECT * FROM '{}';".format(tableName))
             
         
         # adding data to value list and decrypting it if required
@@ -636,16 +636,77 @@ class SqliteCipher:
 
 
 
-    def deleteDataInTable(self , tableName , colName , colValue):
+    # function to delete a row based on ID value
+    # if raiseError is True , a error will be raised if ID is not found , but this may result in performance impact as now function as check for ID before deletion
+    def deleteDataInTable(self , tableName , iDValue , commit = True , raiseError = True):
 
+
+        # setting up table names
         tableName , encTableName , secured = self.checkIfTableIsSecured(tableName)
 
         tableDiscription = self.describeTable(tableName)
 
+        # col ID name
+        iDName = tableDiscription[0][2]
+
+        # we have to make a statement like this
+        # "DELETE from COMPANY where ID = 2;"
+
         if(secured):
-            stringToExe = "DELETE from '{}' where ".format(encTableName)
+
+            # getting data from table to find the corresponding encrypted ID
+            result = self.sqlObj.execute("SELECT * FROM '{}';".format(encTableName))
+
+            found = False
+
+            for i in result:
+                
+                # if the ID passed is same as found in data base , then pick up the encrypted version of it from data base
+                if(int(self.decryptor(i[0])) == int(iDValue)):
+                    iDValue = i[0]
+                    found = True
+                    break
+
+            # raise error if ID not found
+            if((raiseError) and (not(found))):
+                raise RuntimeError("ID = {} not found while deletion process".format(iDValue))
+
+            stringToExe = """DELETE from '{}' where "{}"='{}';""".format(encTableName , iDName , iDValue)
+
         else:
-            stringToExe = "DELETE from '{}' where ".format(tableName)
+
+            # raise error if ID not found
+            if(raiseError):
+
+                # getting data from db to check if ID is present in data base
+                result = self.sqlObj.execute("SELECT * FROM '{}';".format(tableName))
+
+                found = False
+
+                for i in result:
+
+                    # if present make found = True
+                    if(int(i[0]) == int(iDValue)):
+                        found = True
+                        break
+
+                # raise error
+                if((not(found))):
+                    raise RuntimeError("ID = {} not found while deletion process".format(iDValue))
+
+            stringToExe = "DELETE from '{}' WHERE {}='{}';".format(tableName , iDName , iDValue)
+
+        # exe command
+        result = self.sqlObj.execute(stringToExe)
+        
+        # commit if wanted
+        if(commit):
+            self.sqlObj.commit()
+
+
+        
+
+        
 
         
 
@@ -691,7 +752,7 @@ if __name__ == "__main__":
 
     obj.insertIntoTable('testTable' , [123 , "hello" , dataBytes , [4,5,6] , {"key":"value"} , 4.123])
     
-    colList , result = obj.getDataFromTable('testTable' , omitID=True)
+    colList , result = obj.getDataFromTable('testTable' , omitID=False)
 
     # print(colList)
 
@@ -700,6 +761,19 @@ if __name__ == "__main__":
             print(j , "    " , type(j))
 
         print("\n\n")
+
+    obj.deleteDataInTable('testTable' , 2)
+    print("\nafter\n")
+
+
+    colList , result = obj.getDataFromTable('testTable' , omitID=False)
+
+    for i in result:
+        for j in i:
+            print(j , "    " , type(j))
+
+        print("\n\n")
+
 
     
 
