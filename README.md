@@ -78,11 +78,11 @@ Parameters -
 
 2. A table - tableNames is created with following schema
 
-    colName________Data Type
+colName________Data Type
 </br>
-    tableName______TEXT 
+tableName______TEXT 
 </br>
-    secured________INT
+secured________INT
 </br>
 
 -    This table is to store and maintain records of which table as been created in data base because when using encryption on table name "Hello" it will yield diff strings so record is needed to be maintained.
@@ -97,11 +97,11 @@ Parameters -
 
 3. A table - authenticationTable is created with the following schema
 
-    colName_________Data Type
+colName_________Data Type
 </br>
-    SHA512_pass_____TEXT 
+SHA512_pass_____TEXT 
 </br>
-    encryptedKey____TEXT
+encryptedKey____TEXT
 </br>
 
 -    SHA512_pass is used to store the value obtained after applying SHA512 algo to your password for authenticating in the future.
