@@ -1,4 +1,4 @@
-# pysqlitecipher
+<!-- # pysqlitecipher
 
 Ligth weigth and easy to use sqlite wrapper with built in encryption system.
 
@@ -363,4 +363,19 @@ obj.changePassword(newPass)
 ```
 
 Pass the new password here and the password will be changed
+ -->
 
+
+
+
+
+
+
+
+# pysqlitecipher
+
+Ligth weigth and easy to use sqlite wrapper with built in encryption system.
+
+
+read the documentation here - 
+https://www.blog.letscodeofficial.com/@harshnative/encrypting-sqlite-database-in-python-using-pysqlitecipher-module/
