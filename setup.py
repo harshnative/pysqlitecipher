@@ -7,7 +7,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pysqlitecipher", # Replace with your own username
-    version="0.11",
+    version="0.13",
     author="Harsh Native",
     author_email="Harshnative@gmail.com",
     description="Ligth weigth and easy to use sqlite wrapper with built in encryption system.",

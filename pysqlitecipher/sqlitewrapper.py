@@ -887,7 +887,7 @@ class SqliteCipher:
         new_sha512Pass = hashlib.sha512(newPass.encode()).hexdigest()
         
         # converting password to SHA256
-        new_sha256Pass = hashlib.sha512(newPass.encode()).hexdigest()
+        new_sha256Pass = hashlib.sha256(newPass.encode()).hexdigest()
 
         key = self.stringKey
 
@@ -935,7 +935,7 @@ if __name__ == "__main__":
             ["floatData" , "REAL"],
         ]
 
-    # obj.createTable("testTable" , colList , makeSecure=True)
+    obj.createTable("testTable" , colList , makeSecure=True)
 
     # print(obj.getAllTableNames())
     # print(obj.checkIfTableIsSecured('testTable'))
@@ -989,7 +989,7 @@ if __name__ == "__main__":
 
     #     print("\n\n")
 
-    obj.changePassword("helloboi")
+    # obj.changePassword("helloboi")
 
     
 
