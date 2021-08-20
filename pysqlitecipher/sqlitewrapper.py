@@ -40,7 +40,7 @@ class SqliteCipher:
             sha512Pass = hashlib.sha512(self.password.encode()).hexdigest()
             
             # converting password to SHA256
-            sha256Pass = hashlib.sha512(self.password.encode()).hexdigest()
+            sha256Pass = hashlib.sha256(self.password.encode()).hexdigest()
             
             # getting a random key from fernet
             stringKey = Fernet.generate_key().decode("utf-8")
@@ -78,7 +78,7 @@ class SqliteCipher:
             encryptedKey = i[1]
 
         # generating key to decrypt key
-        sha256Pass = hashlib.sha512(self.password.encode()).hexdigest()
+        sha256Pass = hashlib.sha256(self.password.encode()).hexdigest()
         self.sha256Pass = sha256Pass
 
         # decrypting key
@@ -88,6 +88,31 @@ class SqliteCipher:
         self.stringKey = decryptedKey
         self.key = bytes(self.stringKey , "utf-8")
         self.cipherSuite = Fernet(self.key)
+
+    
+
+
+    # function to convert a string to SHA512
+    def sha512Convertor(self , password):
+        sha512Pass = hashlib.sha512(password.encode()).hexdigest()
+        return sha512Pass
+
+
+
+
+    # function to get the sha512 from db to verify it on your own
+    def getVerifier(self , dataBasePath , checkSameThread):
+
+        # main sqlite3 connection object
+        self.sqlObj = sqlite3.connect(dataBasePath , check_same_thread=checkSameThread)
+
+        # getting the password from data base
+        cursorFromSql = self.sqlObj.execute("SELECT * FROM authenticationTable;")
+        for i in cursorFromSql:
+            sha512PassFromDB = i[0]
+
+        return sha512PassFromDB
+
         
 
 
