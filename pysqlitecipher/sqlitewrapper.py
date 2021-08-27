@@ -5,6 +5,29 @@ from cryptography.fernet import Fernet
 import hashlib
 import onetimepad
 import json
+import random
+
+
+class Shuffler:
+    
+    @classmethod
+    def shuffle_under_seed(cls , ls, seed):
+        # Shuffle the list ls using the seed `seed`
+        random.seed(seed)
+        random.shuffle(ls)
+        return ls
+
+    @classmethod
+    def unshuffle_list(cls , shuffled_ls, seed):
+        n = len(shuffled_ls)
+        # Perm is [1, 2, ..., n]
+        perm = [i for i in range(1, n + 1)]
+        # Apply sigma to perm
+        shuffled_perm = cls.shuffle_under_seed(perm, seed)
+        # Zip and unshuffle
+        zipped_ls = list(zip(shuffled_ls, shuffled_perm))
+        zipped_ls.sort(key=lambda x: x[1])
+        return [a for (a, b) in zipped_ls]
 
 # main class containing all the main methods
 class SqliteCipher:
@@ -12,6 +35,9 @@ class SqliteCipher:
     # constructor for the object
     def __init__(self , dataBasePath="pysqlitecipher.db" , checkSameThread=False , password=None):
         
+        self.dataBasePath = dataBasePath
+        self.checkSameThread = checkSameThread
+
         # main sqlite3 connection object
         self.sqlObj = sqlite3.connect(dataBasePath , check_same_thread=checkSameThread)
 
@@ -88,6 +114,8 @@ class SqliteCipher:
         self.stringKey = decryptedKey
         self.key = bytes(self.stringKey , "utf-8")
         self.cipherSuite = Fernet(self.key)
+
+        self.md5Pass = hashlib.md5(self.password.encode()).hexdigest()
 
     
 
@@ -184,15 +212,36 @@ class SqliteCipher:
 
     # function to encrypt the passed string
     def encryptor(self , string):
+
+        # encrypting
         stringToPass = bytes(string , "utf-8")
         encodedText = self.cipherSuite.encrypt(stringToPass)
-        return encodedText.decode("utf-8")
+
+        encodedText = encodedText.decode("utf-8")
+
+        # shuffling
+        list_encodedText = list(encodedText)
+
+        shuffled_encodedTextList = Shuffler.shuffle_under_seed(list_encodedText , self.md5Pass)
+
+        encodedText = ''.join(shuffled_encodedTextList)
+
+        return encodedText
 
         
 
     
     # function to decrypt the passed string
     def decryptor(self , string):
+
+        # deshuffling
+        list_string = list(string)
+
+        deshuffledString = Shuffler.unshuffle_list(list_string , self.md5Pass)
+
+        string = ''.join(deshuffledString)
+
+        # decrypting
         stringToPass = bytes(string , "utf-8")
         decodedText = self.cipherSuite.decrypt(stringToPass)
         return decodedText.decode("utf-8")
@@ -201,11 +250,27 @@ class SqliteCipher:
     # function to encrypt the passed string
     def encryptorBinary(self , bytesData):
         encodedText = self.cipherSuite.encrypt(bytesData)
+
+        # shuffling
+        list_encodedText = list(encodedText)
+
+        shuffled_encodedTextList = Shuffler.shuffle_under_seed(list_encodedText , self.md5Pass)
+
+        encodedText = bytes(shuffled_encodedTextList)
+
         return encodedText
 
     
     # function to decrypt the passed string
     def decryptorBinary(self , bytesData):
+
+        # deshuffling
+        list_bytes = list(bytesData)
+
+        deshuffledList = Shuffler.unshuffle_list(list_bytes , self.md5Pass)
+
+        bytesData = bytes(deshuffledList)
+
         decodedText = self.cipherSuite.decrypt(bytesData)
         return decodedText
 
@@ -880,7 +945,35 @@ class SqliteCipher:
     # we need to encrypt the key using new password and change it in data base
     # we need to change the SHA512 value in data base
     def changePassword(self , newPass):
+
         newPass = str(newPass)
+        oldPass = self.password
+
+        # update the encryption in everyTable
+        tableList = self.getAllTableNames()
+
+        count = 0
+        final_count = len(tableList[2:])
+
+        tableData = []
+
+        for i in tableList[2:]:
+            _ , _ , temp_secured = self.checkIfTableIsSecured(i[0])
+            if(temp_secured == 1):
+                colList , result = self.getDataFromTable(i[0] , omitID=True)
+
+                tableData.append([i[0] , colList , result])
+
+                self.sqlObj.execute("DROP TABLE IF EXISTS '{}'".format(i[1]))
+                toDelete = """DELETE from '{}' where "{}"='{}';""".format("tableNames" , "tableName" , i[1])
+                self.sqlObj.execute(toDelete)
+                self.sqlObj.commit()
+
+            yield count , final_count
+
+            count = count + 1
+
+        tableList = self.getAllTableNames()
 
         # converting password to SHA512
         oldSha512Pass = hashlib.sha512(self.password.encode()).hexdigest()
@@ -903,10 +996,27 @@ class SqliteCipher:
         stringToExe = """UPDATE authenticationTable set SHA512_pass = '{}' where SHA512_pass = '{}'""".format(new_sha512Pass , oldSha512Pass)
         self.sqlObj.execute(stringToExe)
         self.sqlObj.commit()
-        
+
 
         
 
+        self.__init__(self.dataBasePath , self.checkSameThread , newPass)
+        
+        count = 0
+        final_count = len(tableData)
+
+
+        for i in tableData:
+            self.createTable(i[0] , i[1] , True)
+
+            for j in i[2]:
+                self.insertIntoTable(i[0] , j)
+
+            yield count , final_count
+
+            count = count + 1
+
+            
         
 
 
@@ -924,7 +1034,7 @@ class SqliteCipher:
 
 
 if __name__ == "__main__":
-    obj = SqliteCipher(password="helloboi")
+    obj = SqliteCipher(password="helloworld")
 
     colList = [
             ["rollno" , "INT"],
@@ -935,7 +1045,7 @@ if __name__ == "__main__":
             ["floatData" , "REAL"],
         ]
 
-    obj.createTable("testTable" , colList , makeSecure=True)
+    # obj.createTable("testTable" , colList , makeSecure=True)
 
     # print(obj.getAllTableNames())
     # print(obj.checkIfTableIsSecured('testTable'))
@@ -989,7 +1099,12 @@ if __name__ == "__main__":
 
     #     print("\n\n")
 
-    # obj.changePassword("helloboi")
+    # print("changing pass")
+
+    # for i in obj.changePassword("helloworld"):
+    #     print(i)
+    
+    # print("done")
 
     
 
