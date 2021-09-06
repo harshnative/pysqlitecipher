@@ -120,8 +120,10 @@ class SqliteCipher:
     
 
 
+    
     # function to convert a string to SHA512
-    def sha512Convertor(self , password):
+    @classmethod
+    def sha512Convertor(cls , password):
         sha512Pass = hashlib.sha512(password.encode()).hexdigest()
         return sha512Pass
 
@@ -129,13 +131,14 @@ class SqliteCipher:
 
 
     # function to get the sha512 from db to verify it on your own
-    def getVerifier(self , dataBasePath , checkSameThread):
+    @classmethod
+    def getVerifier(cls , dataBasePath , checkSameThread):
 
         # main sqlite3 connection object
-        self.sqlObj = sqlite3.connect(dataBasePath , check_same_thread=checkSameThread)
+        sqlObj = sqlite3.connect(dataBasePath , check_same_thread=checkSameThread)
 
         # getting the password from data base
-        cursorFromSql = self.sqlObj.execute("SELECT * FROM authenticationTable;")
+        cursorFromSql = sqlObj.execute("SELECT * FROM authenticationTable;")
         for i in cursorFromSql:
             sha512PassFromDB = i[0]
 
