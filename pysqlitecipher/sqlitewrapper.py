@@ -29,6 +29,8 @@ class Shuffler:
         zipped_ls.sort(key=lambda x: x[1])
         return [a for (a, b) in zipped_ls]
 
+
+
 # main class containing all the main methods
 class SqliteCipher:
 
@@ -1108,6 +1110,8 @@ if __name__ == "__main__":
     #     print(i)
     
     # print("done")
+
+    SqliteCipher.getVerifier()
 
     
 
