@@ -629,8 +629,7 @@ class SqliteCipher:
     # a) col list containing names of cols
     # b) value list containing values in form of sublist  valueList( row1(col1Data , col2Data) , row2(col1Data , col2Data) ) = [ [col1Data , col2Data] , [col1Data , col2Data] ]
     # sometimes module can receive a unexpected data type like int in col of list data type then if raiseConversionError is True then error is raised else the exact string is returned
-    def getDataFromTable(self , tableName , raiseConversionError = True , omitID = False):
-        
+    def getDataFromTable(self , tableName , raiseConversionError = True , omitID = False, colType = False):
         def raiseConversionErrorFunction(value , to):
             raise ValueError("{} cannot be converted to {}".format(value , to))
 
@@ -643,8 +642,10 @@ class SqliteCipher:
         colList = []
 
         for i in tableDiscription:
-            colList.append(i[0])
-
+            if colType:
+              colList.append([i[0], i[1]])
+            else:
+              colList.append(i[0])
 
         # getting data from data base
         if(secured):
@@ -956,6 +957,7 @@ class SqliteCipher:
 
         # update the encryption in everyTable
         tableList = self.getAllTableNames()
+        
 
         count = 0
         final_count = len(tableList[2:])
@@ -965,7 +967,7 @@ class SqliteCipher:
         for i in tableList[2:]:
             _ , _ , temp_secured = self.checkIfTableIsSecured(i[0])
             if(temp_secured == 1):
-                colList , result = self.getDataFromTable(i[0] , omitID=True)
+                colList , result = self.getDataFromTable(i[0] , omitID=True, colType=True)
 
                 tableData.append([i[0] , colList , result])
 
@@ -1050,7 +1052,7 @@ if __name__ == "__main__":
             ["floatData" , "REAL"],
         ]
 
-    # obj.createTable("testTable" , colList , makeSecure=True)
+    obj.createTable("testTable" , colList , makeSecure=True)
 
     # print(obj.getAllTableNames())
     # print(obj.checkIfTableIsSecured('testTable'))
@@ -1068,7 +1070,7 @@ if __name__ == "__main__":
     
     colList , result = obj.getDataFromTable('testTable' , omitID=False)
 
-    # print(colList)
+    print(colList)
 
     for i in result:
         for j in i:
@@ -1106,12 +1108,22 @@ if __name__ == "__main__":
 
     # print("changing pass")
 
-    # for i in obj.changePassword("helloworld"):
-    #     print(i)
+    for i in obj.changePassword("helloworld"):
+        print(i)
     
+    
+    colList , result = obj.getDataFromTable('testTable' , omitID=False)
+
+    print(colList)
+
+    for i in result:
+        for j in i:
+            print(j , "    " , type(j))
+
+        print("\n\n")
     # print("done")
 
-    SqliteCipher.getVerifier()
+    #SqliteCipher.getVerifier()
 
     
 
